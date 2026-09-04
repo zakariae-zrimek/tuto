@@ -1,0 +1,72 @@
+@Override
+@Transactional
+public void qualifyIncident(Long incidentId,
+                            UpdateIncidentQualificationRequest request) {
+
+    // 1. Au moins un champ doit être fourni
+    if (request.getIncidentType() == null && request.getPriority() == null) {
+        throw new InvalidIncidentStateException(
+            "Au moins un champ est requis : incidentType ou priority");
+    }
+
+    Incident incident = incidentRepository.findById(incidentId)
+            .orElseThrow(() -> new IncidentNotFoundException(incidentId));
+
+    // 2. Bloquer si statut != OPEN
+    if (incident.getIncidentStatus() != IncidentStatus.OPEN) {
+        throw new InvalidIncidentStateException(
+            "Qualification impossible — l'incident est au statut : "
+            + incident.getIncidentStatus()
+            + ". Seul le statut OPEN est autorisé.");
+    }
+
+    User currentUser = getCurrentUser();
+
+    // 3. Sauvegarder anciennes valeurs pour historique
+    String oldType     = incident.getIncidentType() != null
+                         ? incident.getIncidentType().name() : "N/A";
+    String oldPriority = incident.getPriority() != null
+                         ? incident.getPriority().name() : "N/A";
+
+    // 4. Mise à jour partielle
+    //    → si null, on garde l'ancienne valeur
+    if (request.getIncidentType() != null) {
+        incident.setIncidentType(request.getIncidentType());
+    }
+    if (request.getPriority() != null) {
+        incident.setPriority(request.getPriority());
+    }
+
+    incidentRepository.save(incident);
+
+    // 5. Historique — montrer ce qui a changé
+    String newType     = incident.getIncidentType() != null
+                         ? incident.getIncidentType().name() : "N/A";
+    String newPriority = incident.getPriority() != null
+                         ? incident.getPriority().name() : "N/A";
+
+    IncidentHistory history = new IncidentHistory();
+    history.setIncident(incident);
+    history.setUser(currentUser);
+    history.setOldStatus(null);
+    history.setNewStatus(null);
+    history.setComment(buildComment(
+        request, oldType, oldPriority, newType, newPriority));
+
+    incidentHistoryRepository.save(history);
+}
+
+// Commentaire intelligent selon ce qui a été modifié
+private String buildComment(UpdateIncidentQualificationRequest request,
+                            String oldType, String oldPriority,
+                            String newType, String newPriority) {
+    if (request.getIncidentType() != null && request.getPriority() != null) {
+        return String.format(
+            "Qualification — Type : %s → %s | Priorité : %s → %s",
+            oldType, newType, oldPriority, newPriority);
+    }
+    if (request.getIncidentType() != null) {
+        return String.format("Qualification — Type : %s → %s", oldType, newType);
+    }
+    return String.format("Qualification — Priorité : %s → %s", oldPriority, newPriority);
+}
