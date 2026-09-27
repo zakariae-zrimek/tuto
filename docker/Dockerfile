@@ -6,14 +6,15 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build -- --configuration production
+
+RUN npm run build -- --configuration production --base-href /pilotage-center/
 
 
 FROM nginx:alpine
 
 RUN rm -rf /usr/share/nginx/html/*
 
-COPY --from=build /app/dist/frontend/browser /usr/share/nginx/html
+COPY --from=build /app/dist/pilotage-center/browser /usr/share/nginx/html
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
